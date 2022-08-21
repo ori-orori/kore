@@ -37,13 +37,13 @@ def replay_game(file_path):
 
     # make new environment
     env = Environment(
-            specification=data.specification,
-            configuration=data.configuration,
-            steps=data.steps,
-            agents=data.agents,
-            interpreter=data.interpreter,
-            renderer=data.renderer,
-            html_renderer=data.html_renderer,
-            debug=data.debug,
+            specification=data["specification"],
+            configuration=data["configuration"],
+            steps=data["steps"],
+            agents=kore_env.agents,
+            interpreter=kore_env.interpreter,
+            renderer=kore_env.renderer,
+            html_renderer=kore_env.html_renderer,
+            debug=kore_env.debug,
         )
     return KoreGymEnv(env=env)
