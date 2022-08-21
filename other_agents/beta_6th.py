@@ -1,18 +1,10 @@
 
 from kaggle_environments.envs.kore_fleets.helpers import *
-<<<<<<< Updated upstream
-from extra_helpers import *
-from defend import *
-from attack import *
-from build import *
-from mine import *
-=======
 from other_agents.extra_helpers import *
 from other_agents.defend import *
 from other_agents.attack import *
 from other_agents.build import *
 from other_agents.mine import *
->>>>>>> Stashed changes
 from random import randint
 import itertools
 import numpy as np
