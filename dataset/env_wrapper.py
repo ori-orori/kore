@@ -365,6 +365,10 @@ class KoreGymEnv(gym.Env):
     def toJSON(self):
         return self.env.toJSON()
 
+    def run(self, agents=['./other_agents/beta_1st.py', './other_agents/beta_6th.py']):
+        self.agents = agents
+        return self.env.run(agents)
+
     @staticmethod
     def raw_obs_as_gym_state(raw_obs) -> np.ndarray:
         """Return the current observation encoded as a state in state space.
