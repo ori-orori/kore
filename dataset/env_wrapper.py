@@ -28,16 +28,18 @@ import json
 
 
 class KoreGymEnv(gym.Env):
-    def __init__(self, config=None, agents=None):
+    def __init__(self, config=None, agents=None, env=None):
         super(KoreGymEnv, self).__init__()
 
-        if not config:
+        if config is not None:
             config = GAME_CONFIG
-        if not agents:
-            agents = GAME_AGENTS
+        if agents is not None:
+            self.agents = GAME_AGENTS            
+        if env is not None:
+            self.env = env
+        else:
+            self.env = make("kore_fleets", configuration=config)
 
-        self.agents = agents
-        self.env = make("kore_fleets", configuration=config)
         self.config = self.env.configuration
         self.trainer = None
         self.raw_obs = None
@@ -359,6 +361,10 @@ class KoreGymEnv(gym.Env):
             shipyard.next_action = action
             
         return me.next_actions
+
+    def toJSON(self):
+        return self.env.toJSON()
+
     @staticmethod
     def raw_obs_as_gym_state(raw_obs) -> np.ndarray:
         """Return the current observation encoded as a state in state space.
@@ -373,7 +379,7 @@ class KoreGymEnv(gym.Env):
         # Feature 6: Progress - What turn is it?
         # Feature 7: How much kore do I have?
         # Feature 8: How much kore does the enemy have?
-        # Feature 9: Controlled fleet id
+        # Feature 9: Controlled fleet x_position, y_position, ship count, id
 
         Args:
             raw_obs: raw observation of kore environment 
