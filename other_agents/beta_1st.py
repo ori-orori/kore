@@ -1782,8 +1782,9 @@ def is_invitable_victory(player: Player):
 import os
 import logging
 
-FILE = "game.log"
-IS_KAGGLE = os.path.exists("/kaggle_simulations")
+path = os.path.abspath('..')
+FILE = path+"/other_agents/game.log"
+IS_KAGGLE = True
 LEVEL = logging.DEBUG if not IS_KAGGLE else logging.INFO
 LOGGING_ENABLED = False
 
@@ -1801,6 +1802,7 @@ class _FileHandler(logging.FileHandler):
 
 def init_logger(_logger):
     if not IS_KAGGLE:
+        print(1)
         if os.path.exists(FILE):
             os.remove(FILE)
 
