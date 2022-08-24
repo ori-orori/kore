@@ -1,18 +1,24 @@
 import os
+import yaml
+import argparse
+from collections import defaultdict
+
+import numpy as np
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, random_split
-from dataset.dataset import Dataset
 
-import yaml
-import argparse
+from env_wrapper import KoreGymEnv
+from dataset.dataset import Dataset
 from models.model_factory import model_build
+from util import build_loss_func, build_optim, build_scheduler
+from util import plot_progress, log_progress, get_agent_ratio, get_env_info
 
 def train(cfg, args):
-    '''train model
+    """train model
         if args.mode == sl, then proceed supervised learning
         if args.mode == rl, then proceed reinforcement learning
-    '''
+    """
     mode = args.mode
     if mode == 'sl':
         sl_train(cfg, args)
@@ -22,9 +28,9 @@ def train(cfg, args):
         raise ValueError('train mode must one of ["sl", "rl"]')
 
 def sl_train(cfg):
-    '''train model by supervised learning
+    """train model by supervised learning
 
-    '''
+    """
     ##############################
     #       DataLoader           #
     ##############################
@@ -50,8 +56,8 @@ def sl_train(cfg):
     
     # loss / optim / scheduler / ...
     loss_func = build_loss_func(cfg, args)
-    optimizer = build_optim(cfg, args, model)
-    scheduler = build_scheduler(cfg, args, optimizer)
+    optim = build_optim(cfg, args, model)
+    scheduler = build_scheduler(cfg, args, [optim])
     epochs = cfg['train']['sl']['epochs']
     device = cfg['train']['device']
     if device == 'cuda':
@@ -66,7 +72,7 @@ def sl_train(cfg):
     if args.resume:
         checkpoint = torch.load(args.resume_path)
         model.load_state_dict(checkpoint['model_state_dict'])
-        optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+        optim.load_state_dict(checkpoint['optimizer_state_dict'])
         scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
         start_epoch = checkpoint['epoch']
     else:
@@ -85,12 +91,12 @@ def sl_train(cfg):
         for i, (state, action) in enumerate(train_dataloader):
             # TODO : get state and action from dataloader
             # state, action = ....
-            optimizer.zero_grad()
+            optim.zero_grad()
             prediction = model(state)
             loss = loss_func(prediction, action)
             training_loss += loss.item()
             loss.backward()
-            optimizer.step()
+            optim.step()
             log_progress()
         history["T_loss"].append(training_loss/len(train_dataloader))
 
@@ -111,95 +117,137 @@ def sl_train(cfg):
         torch.save(
             {
                 "model_state_dict": model.state_dict(),
-                "optimizer_state_dict": optimizer.state_dict(),
+                "optimizer_state_dict": optim.state_dict(),
                 "scheduler_state_dict": scheduler.state_dict(),
                 "epoch": epoch
             }
             , f"{cfg['train']['sl']['save_path']}/checkpoint_{epoch}.ckpt")
 
 def rl_train(cfg, args):
-    '''train model by reinforcement learning
-
+    """train model by reinforcement learning
+    
         
-    '''
-    pass
-
-def build_loss_func(cfg, args):
-    '''build loss function depends on train type
-
-    Returns:
-        torch loss function
-    '''
-    mode = args.mode
-    if mode == 'sl':
-        pass
-    elif mode == 'rl':
-        pass
-    
-    # raise NotImplementedError()
-    return None
-
-
-
-def build_optim(cfg, args, model):
-    '''train model by supervised learning
-
-    Returns:
-        torch optimizer
-    '''
-    mode = args.mode
-    if mode == 'sl':
-        optim = cfg['train'][mode]['optim']
-        lr = cfg['train'][mode]['learning_rate']
-    elif mode == 'rl':
-        optim = cfg['train']['rl']['optim']
-        lr = cfg['train']['rl']['learning_rate']
-    
-    optim = optim.lower()    
-
-    if optim == 'sgd':
-        return torch.optim.SGD(model.parameters(), lr=lr)
-    
-    if optim == 'adam':
-        return torch.optim.Adam(model.parameters(), lr=lr)
-    
-    # TODO : add optimizer
-
-
-def build_scheduler(cfg, args, optim):
-    '''train model by supervised learning
-
-    Returns:
-        torch learning rate scheduler
-    '''
-    mode = args.mode
-    if mode == 'sl':
-        scheduler_dict = cfg['train']['sl']['scheduler']
-    elif mode == 'rl':
-        scheduler_dict = cfg['train']['rl']['scheduler']
-
-    scheduler, spec = scheduler_dict.items()
-    scheduler = scheduler.lower()
-    
-    if scheduler == 'multistep':
-        return torch.optim.lr_scheduler.MultiStepLR(optim, milestones=[spec["milestones"]], gamma=spec["gamma"])
-
-    if scheduler == 'cyclic':
-        return torch.optim.lr_scheduler.CyclicLR(optim, base_lr=spec["base_lr"], max_lr=spec["max_lr"])
-    
-    # TODO : add leraning rate scheduler
-
-def plot_progress():
     """
+    ##############################
+    #       Training SetUp       #
+    ##############################
     
-    """
-    pass
+    # loss / optim / scheduler / ...
+    actor_loss_func, critic_loss_func = build_loss_func(cfg, args)
+    actor_optim, critic_optim = build_optim(cfg, args, model)
+    actor_scheduler, critic_scheduler = build_scheduler(cfg, args, [actor_optim, critic_optim])
+    episodes = cfg['train']['rl']['episodes']
+    device = cfg['train']['device']
+    if device == 'cuda':
+        if not torch.cuda.is_available():
+            print('Cuda is unavailable. Replay the device with cpu.')
+            device = 'cpu'
+    
+    # set other agents for training
+    play_history = defaultdict(lambda: [0, 0])
+    for agent_file in os.listdir('./other_agents'):
+        agent_name, file_extension = os.path.splitext(agent_file)
+        if file_extension == '.py':
+            play_history[agent_name]
+    print(f'other agents : {play_history.keys()}')
+    agents_ratio = get_agent_ratio(play_history)
 
-def log_progress():
-    '''
+    # set environment
+    env = KoreGymEnv()
+    
+    ##############################
+    #       BUILD MODEL          #
+    ##############################
+    model = model_build(cfg, args).to(device)
+    if args.resume:
+        checkpoint = torch.load(args.resume_path)
+        model.load_state_dict(checkpoint['model_state_dict'])
+        actor_optim.load_state_dict(checkpoint['optimizer_state_dict']['actor'])
+        critic_optim.load_state_dict(checkpoint['optimizer_state_dict']['critic'])
+        actor_scheduler.load_state_dict(checkpoint['scheduler_state_dict']['actor'])
+        critic_scheduler.load_state_dict(checkpoint['scheduler_state_dict']['critic'])
+        episode= checkpoint['episode']
+    else:
+        os.makedirs(cfg['train']['save_path'], exist_ok=True)
+        episode = 1
+    model.env = env
+    model.episode = episode
 
-    '''
-    pass
+    ##############################
+    #       START TRAINING !!    #
+    ##############################
+    print(f"Learning... Running {model.max_timesteps_per_episode} timesteps per episode, ")
+    print(f"{model.timesteps_per_batch} timesteps per batch for a total of {episodes} episodes")
+    while model.episode < episodes:
+        other_agent = np.random.choice(agents_ratio.keys(), 1, p=agents_ratio.values())
+        if np.random.random() < 0.5:
+            agents = ['./other_agents'+other_agent+'.py', None]
+        else:
+            agents = [None, './other_agents'+other_agent+'.py']
+        
+        batch_obs, batch_acts, batch_log_probs, batch_rtgs, play_history = get_env_info(model, agents, play_history)
+
+        # Calculate advantage at k-th iteration
+        V, _ = model.evaluate(batch_obs, batch_acts)
+        A_k = batch_rtgs - V.detach()                                                                       # ALG STEP 5
+
+        # One of the only tricks I use that isn't in the pseudocode. Normalizing advantages
+        # isn't theoretically necessary, but in practice it decreases the variance of 
+        # our advantages and makes convergence much more stable and faster. I added this because
+        # solving some environments was too unstable without it.
+        A_k = (A_k - A_k.mean()) / (A_k.std() + 1e-10)
+
+        # This is the loop where we update our network for some n epochs
+        for _ in range(model.n_updates_per_iteration):                                                       # ALG STEP 6 & 7
+            # Calculate V_phi and pi_theta(a_t | s_t)
+            V, curr_log_probs = model.evaluate(batch_obs, batch_acts)
+
+            # Calculate the ratio pi_theta(a_t | s_t) / pi_theta_k(a_t | s_t)
+            # NOTE: we just subtract the logs, which is the same as
+            # dividing the values and then canceling the log with e^log.
+            # For why we use log probabilities instead of actual probabilities,
+            # here's a great explanation: 
+            # https://cs.stackexchange.com/questions/70518/why-do-we-use-the-log-in-gradient-based-reinforcement-algorithms
+            # TL;DR makes gradient ascent easier behind the scenes.
+            ratios = torch.exp(curr_log_probs - batch_log_probs)
+
+            # Calculate surrogate losses.
+            surr1 = ratios * A_k
+            surr2 = torch.clamp(ratios, 1 - model.clip, 1 + model.clip) * A_k
+
+            # Calculate actor and critic losses.
+            # NOTE: we take the negative min of the surrogate losses because we're trying to maximize
+            # the performance function, but Adam minimizes the loss. So minimizing the negative
+            # performance function maximizes it.
+            actor_loss = actor_loss_func(surr1, surr2)
+            critic_loss = critic_loss_func(V, batch_rtgs)
+
+            # Calculate gradients and perform backward propagation for actor network
+            actor_optim.zero_grad()
+            actor_loss.backward(retain_graph=True)
+            actor_optim.step()
+
+            # Calculate gradients and perform backward propagation for critic network
+            critic_optim.zero_grad()
+            critic_loss.backward()
+            critic_optim.step()
+
+        # Print a summary of our training so far
+        log_progress()
+
+        torch.save(
+            {
+                "model_state_dict": model.state_dict(),
+                "optimizer_state_dict": {'actor' : actor_optim.state_dict(),
+                                        'critic' : critic_optim.state_dict()},
+                "scheduler_state_dict": {'actor' : actor_scheduler.state_dict(),
+                                        'critic' : critic_scheduler.state_dict()},
+                "episode": model.episode
+            }
+            , f"{cfg['train']['rl']['save_path']}/checkpoint_{model.episode}.ckpt")
+    
+
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
