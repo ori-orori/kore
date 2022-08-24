@@ -6,7 +6,7 @@ ENV_SPECIFICATION = make('kore_fleets').specification
 SHIP_COST = ENV_SPECIFICATION.configuration.spawnCost.default
 SHIPYARD_COST = ENV_SPECIFICATION.configuration.convertCost.default
 GAME_CONFIG = {
-    'episodeSteps':  ENV_SPECIFICATION.configuration.episodeSteps.default,  # You might want to start with smaller values
+    'episodeSteps':  ENV_SPECIFICATION.configuration.episodeSteps.default,
     'size': ENV_SPECIFICATION.configuration.size.default
 }
 

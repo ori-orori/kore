@@ -31,15 +31,14 @@ class KoreGymEnv(gym.Env):
     def __init__(self, config=None, agents=None, env=None):
         super(KoreGymEnv, self).__init__()
 
-        if config is not None:
+        if config is None:
             config = GAME_CONFIG
-        if agents is not None:
+        if agents is None:
             self.agents = GAME_AGENTS            
-        if env is not None:
-            self.env = env
-        else:
+        if env is None:
             self.env = make("kore_fleets", configuration=config)
-
+        else:
+            self.env = env
         self.config = self.env.configuration
         self.trainer = None
         self.raw_obs = None
@@ -60,20 +59,24 @@ class KoreGymEnv(gym.Env):
         kore_action = self.gym_to_kore_action(action)
         self.raw_obs, _, done, info = self.trainer.step(kore_action)  # Ignore trainer reward, which is just delta kore
         if done:
-            agent_reward = self.raw_obs.players[0][0]
-            opponent_reward = self.raw_obs.players[1][0]
+            player = int(self.raw_obs.player)
+            opponent = 1 - player
+            agent_reward = self.raw_obs.players[player][0]
+            opponent_reward = self.raw_obs.players[opponent][0]
             self.reward = 1.0 if agent_reward > opponent_reward else -1.0
         else:
             self.reward = 0.0
 
         return self.obs_as_gym_state, self.reward, done, info
 
-    def reset(self):
+    def reset(self, agents=None):
         """Reset environment
         
         Returns:
             self.obs_as_gym_state: the first observation encoded as a state in state space
         """
+        if agents is not None:
+            self.agents = agents
         self.trainer = self.env.train(self.agents)
         self.raw_obs = self.trainer.reset()
         return self.obs_as_gym_state
@@ -365,9 +368,15 @@ class KoreGymEnv(gym.Env):
     def toJSON(self):
         return self.env.toJSON()
 
-    def run(self, agents=['./other_agents/beta_1st.py', './other_agents/beta_6th.py']):
-        self.agents = agents
-        return self.env.run(agents)
+    def run(self, agents=None):
+        """
+        
+        Args:
+            agents : ['./other_agents/beta_1st.py', './other_agents/beta_6th.py']
+        """
+        if agents is not None:
+            self.agents = agents
+        return self.env.run(self.agents)
 
     @staticmethod
     def raw_obs_as_gym_state(raw_obs) -> np.ndarray:
@@ -630,3 +639,16 @@ def clip_normalize(x, low_in, high_in, low_out=0.0, high_out=1.0):
     b = high_out - high_in * a
 
     return a * x + b
+
+# test
+# env = KoreGymEnv()
+# obs = env.reset([None, '../other_agents/beta_1st.py'])
+# obs = env.reset(['../other_agents/beta_1st.py', None])
+# env.step({'0':[0]})
+# env.step({'0':[0]})
+# env.step({'0':[-0.3]})
+# print(env.raw_obs)
+# print(env.raw_obs["players"])
+# print(dir(env.raw_obs))
+# print(env.board)
+# print(env.raw_obs.player)

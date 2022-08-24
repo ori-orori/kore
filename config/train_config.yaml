@@ -3,7 +3,7 @@ train:
     learning_rate: 0.0001
     epochs: 100
     save_path: './pretrained/supervised_learning'
-    optim: ADAM
+    optim: 'ADAM'
     scheduler: {'multistep': {"milestones": [30, 80], "gamma": 0.1}}
     dataset:
       data_path: './data/'
@@ -11,10 +11,23 @@ train:
       num_workers: 2
       batch_size: 64
   rl:
-    learning_rate: 0.0001
     episodes: 10000
     save_path: './pretrained/reinforcement_learning'
-    optim: ADAM
+    optim:
+      actor: 'ADAM'
+      critic: 'ADAM'
+    learning_rate:
+      actor: 0.0001
+      critic: 0.0001
+    scheduler:
+      actor : {'multistep': {"milestones": [30, 80], "gamma": 0.1}}
+      critic : {'multistep': {"milestones": [30, 80], "gamma": 0.1}}
+    model:
+      timesteps_per_batch: 4000
+      max_timesteps_per_episode: 400
+      n_updates_per_iteration: 5
+  
+
 
   device: 'cpu'
   
