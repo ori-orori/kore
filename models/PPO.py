@@ -4,6 +4,7 @@ from torch.distributions import MultivariateNormal
 from torch.distributions import Categorical
 
 ################################## set device ##################################
+
 print("============================================================================================")
 # set device to cpu or cuda
 device = torch.device('cpu')
@@ -17,15 +18,21 @@ print("=========================================================================
 
 
 ################################## PPO Policy ##################################
+
 class RolloutBuffer:
     def __init__(self):
-        self.actions = []
-        self.states = []
-        self.logprobs = []
-        self.rewards = []
-        self.is_terminals = []
+        self.actions = []           # buffer action
+        self.states = []            # buffer state
+        self.logprobs = []          # log probability of each action
+        self.rewards = []           # buffer reward
+        self.is_terminals = []      # bool data tells if it is terminals
     
     def clear(self):
+        """Clear all buffer data
+        
+        Returns:
+            None
+        """
         del self.actions[:]
         del self.states[:]
         del self.logprobs[:]
@@ -40,10 +47,12 @@ class ActorCritic(nn.Module):
         self.has_continuous_action_space = has_continuous_action_space
         
         if has_continuous_action_space:
+            # create our variable for the matrix filled with action_std^2
             self.action_dim = action_dim
             self.action_var = torch.full((action_dim,), action_std_init * action_std_init).to(device)
-        # actor
-        if has_continuous_action_space :
+
+        # Initializing actor network
+        if has_continuous_action_space:
             self.actor = nn.Sequential(
                             nn.Linear(state_dim, 64),
                             nn.Tanh(),
@@ -60,7 +69,8 @@ class ActorCritic(nn.Module):
                             nn.Linear(64, action_dim),
                             nn.Softmax(dim=-1)
                         )
-        # critic
+
+        # Initializing critic network
         self.critic = nn.Sequential(
                         nn.Linear(state_dim, 64),
                         nn.Tanh(),
@@ -70,6 +80,15 @@ class ActorCritic(nn.Module):
                     )
         
     def set_action_std(self, new_action_std):
+        """Set our avriable for the matrix filled with new_action_std^2
+
+        Args:
+            new_action_std
+
+        Returns:
+            None
+
+        """
         if self.has_continuous_action_space:
             self.action_var = torch.full((self.action_dim,), new_action_std * new_action_std).to(device)
         else:
@@ -81,6 +100,16 @@ class ActorCritic(nn.Module):
         raise NotImplementedError
     
     def act(self, state):
+        """Calculate and get action of our agent
+
+        Args:
+            state: observation data from our environment
+
+        Returns:
+            action.detach(): action dateched from the graph
+            action_logprob.detach(): action log probability detached from the graph
+
+        """
         if self.has_continuous_action_space:
             action_mean = self.actor(state)
             cov_mat = torch.diag(self.action_var).unsqueeze(dim=0)
@@ -95,7 +124,18 @@ class ActorCritic(nn.Module):
         return action.detach(), action_logprob.detach()
     
     def evaluate(self, state, action):
+        """Calculate value of each state and log probabilities of the actions
+        
+        Args:
+            state: observation data from our environment
+            action: action tensor which we took from act
 
+        Returns:
+            action_logprobs: actions we took during our most recent rollout buffer
+            state_values: value of the state applied recent policy
+            dist_entropy: entropy tensor of action
+
+        """
         if self.has_continuous_action_space:
             action_mean = self.actor(state)
             
@@ -168,7 +208,6 @@ class PPO:
         print("--------------------------------------------------------------------------------------------")
 
     def select_action(self, state):
-
         if self.has_continuous_action_space:
             with torch.no_grad():
                 state = torch.FloatTensor(state).to(device)
