@@ -11,7 +11,6 @@ from config.config import (
     N_FEATURES,
     GAME_AGENTS,
     GAME_CONFIG,
-    DTYPE,
     MAX_OBSERVABLE_KORE,
     MAX_FLEET_SHIPS,
     MAX_FLEET_KORE,
@@ -61,8 +60,8 @@ class KoreGymEnv(gym.Env):
         if done:
             player = int(self.raw_obs.player)
             opponent = 1 - player
-            agent_reward = self.raw_obs.players[player][0]
-            opponent_reward = self.raw_obs.players[opponent][0]
+            agent_reward = self.raw_obs["players"][player][0]
+            opponent_reward = self.raw_obs["players"][opponent][0]
             self.reward = 1.0 if agent_reward > opponent_reward else -1.0
         else:
             self.reward = 0.0
@@ -641,14 +640,14 @@ def clip_normalize(x, low_in, high_in, low_out=0.0, high_out=1.0):
     return a * x + b
 
 # test
-# env = KoreGymEnv()
+env = KoreGymEnv()
 # obs = env.reset([None, '../other_agents/beta_1st.py'])
-# obs = env.reset(['../other_agents/beta_1st.py', None])
+obs = env.reset(['../other_agents/beta_1st.py', None])
 # env.step({'0':[0]})
 # env.step({'0':[0]})
 # env.step({'0':[-0.3]})
 # print(env.raw_obs)
-# print(env.raw_obs["players"])
+print(env.raw_obs["players"])
 # print(dir(env.raw_obs))
 # print(env.board)
 # print(env.raw_obs.player)

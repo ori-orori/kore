@@ -11,8 +11,8 @@ from torch.utils.data import DataLoader, random_split
 from env_wrapper import KoreGymEnv
 from dataset.dataset import Dataset
 from models.model_factory import model_build
-from util import build_loss_func, build_optim, build_scheduler
-from util import plot_progress, log_progress, get_agent_ratio, get_env_info
+from utils import build_loss_func, build_optim, build_scheduler
+from utils import plot_progress, log_progress, get_agent_ratio, get_env_info
 
 def train(cfg, args):
     """train model
@@ -49,25 +49,16 @@ def sl_train(cfg):
         shuffle=True, num_workers=cfg['sl']['dataset']['num_workers'])
     val_dataloader = DataLoader(val_dataset, batch_size=batch, \
         shuffle=False, num_workers=cfg['sl']['dataset']['num_workers'])
-
-    ##############################
-    #       Training SetUp       #
-    ##############################
     
-    # loss / optim / scheduler / ...
-    loss_func = build_loss_func(cfg, args)
-    optim = build_optim(cfg, args, model)
-    scheduler = build_scheduler(cfg, args, [optim])
-    epochs = cfg['train']['sl']['epochs']
+    ##############################
+    #       BUILD MODEL          #
+    ##############################
     device = cfg['train']['device']
     if device == 'cuda':
         if not torch.cuda.is_available():
             print('Cuda is unavailable. Replay the device with cpu.')
             device = 'cpu'
-    
-    ##############################
-    #       BUILD MODEL          #
-    ##############################
+            
     model = model_build().to(device)
     if args.resume:
         checkpoint = torch.load(args.resume_path)
@@ -78,6 +69,16 @@ def sl_train(cfg):
     else:
         os.makedirs(cfg['train']['save_path'], exist_ok=True)
         start_epoch = 1
+
+    ##############################
+    #       Training SetUp       #
+    ##############################
+    
+    # loss / optim / scheduler / ...
+    loss_func = build_loss_func(cfg, args)
+    optim = build_optim(cfg, args, model)
+    scheduler = build_scheduler(cfg, args, [optim])
+    epochs = cfg['train']['sl']['epochs']
 
     history = {"T_loss": [], "V_loss": []}
 
@@ -127,7 +128,17 @@ def rl_train(cfg, args):
     """train model by reinforcement learning
     
         
-    """
+    """    
+    ##############################
+    #       BUILD MODEL          #
+    ##############################
+    if device == 'cuda':
+        if not torch.cuda.is_available():
+            print('Cuda is unavailable. Replay the device with cpu.')
+            device = 'cpu'
+    model = model_build(cfg, args).to(device)
+
+
     ##############################
     #       Training SetUp       #
     ##############################
@@ -138,11 +149,7 @@ def rl_train(cfg, args):
     actor_scheduler, critic_scheduler = build_scheduler(cfg, args, [actor_optim, critic_optim])
     episodes = cfg['train']['rl']['episodes']
     device = cfg['train']['device']
-    if device == 'cuda':
-        if not torch.cuda.is_available():
-            print('Cuda is unavailable. Replay the device with cpu.')
-            device = 'cpu'
-    
+
     # set other agents for training
     play_history = defaultdict(lambda: [0, 0])
     for agent_file in os.listdir('./other_agents'):
@@ -152,13 +159,6 @@ def rl_train(cfg, args):
     print(f'other agents : {play_history.keys()}')
     agents_ratio = get_agent_ratio(play_history)
 
-    # set environment
-    env = KoreGymEnv()
-    
-    ##############################
-    #       BUILD MODEL          #
-    ##############################
-    model = model_build(cfg, args).to(device)
     if args.resume:
         checkpoint = torch.load(args.resume_path)
         model.load_state_dict(checkpoint['model_state_dict'])
@@ -170,6 +170,9 @@ def rl_train(cfg, args):
     else:
         os.makedirs(cfg['train']['save_path'], exist_ok=True)
         episode = 1
+
+    # set environment
+    env = KoreGymEnv()
     model.env = env
     model.episode = episode
 

@@ -26,8 +26,10 @@ train:
       timesteps_per_batch: 4000
       max_timesteps_per_episode: 400
       n_updates_per_iteration: 5
-  
-
 
   device: 'cpu'
   
+model:
+  cnn_features_dim: 128
+  scalar_features_dim: 3
+  self_features_dim: 4

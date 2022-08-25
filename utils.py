@@ -10,10 +10,7 @@ def build_loss_func(cfg, args):
     if mode == 'sl':
         pass
     elif mode == 'rl':
-        pass   
-    
-
-
+        pass
 
 def build_optim(cfg, args, model):
     """train model by supervised learning
@@ -37,14 +34,14 @@ def build_optim(cfg, args, model):
         critic_lr = cfg['train']['rl']['learning_rate']['critic']
 
         if actor_optim == 'SGD':
-            actor_optim = torch.optim.SGD(model.parameters(), lr=actor_lr)        
+            actor_optim = torch.optim.SGD(model.actor.parameters(), lr=actor_lr)        
         elif actor_optim == 'ADAM':
-            actor_optim = torch.optim.Adam(model.parameters(), lr=actor_lr)
+            actor_optim = torch.optim.Adam(model.actor.parameters(), lr=actor_lr)
 
         if critic_optim == 'SGD':
-            critic_optim = torch.optim.SGD(model.parameters(), lr=critic_lr)        
+            critic_optim = torch.optim.SGD(model.critic.parameters(), lr=critic_lr)        
         elif critic_optim == 'ADAM':
-            critic_optim = torch.optim.Adam(model.parameters(), lr=critic_lr)
+            critic_optim = torch.optim.Adam(model.critic.parameters(), lr=critic_lr)
 
         return actor_optim, critic_optim    
     
