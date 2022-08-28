@@ -9,7 +9,7 @@ from kaggle_environments.envs.kore_fleets.helpers import ShipyardAction, Board, 
 
 from config.config import (
     N_FEATURES,
-    GAME_AGENTS,
+    MAIN_AGENT,
     GAME_CONFIG,
     DTYPE,
     MAX_OBSERVABLE_KORE,

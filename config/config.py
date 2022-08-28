@@ -11,8 +11,9 @@ GAME_CONFIG = {
 }
 
 # Define your opponent. We'll use the starter bot in the notebook environment for this baseline.
-OPPONENT = '../other_agents/opponent.py'
-GAME_AGENTS = [None, OPPONENT]
+MAIN_AGENT = 'beta_1st'
+OPPONENT = ['beta_1st', 'beta_6th', 'opponent']
+SAMPLES_NUM = [1000, 500, 100]
 
 # Define our parameters
 N_FEATURES = 6
