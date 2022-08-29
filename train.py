@@ -8,11 +8,11 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, random_split
 
-from env_wrapper import KoreGymEnv
+from dataset.env_wrapper import KoreGymEnv
 from dataset.dataset import Dataset
 from models.model_factory import model_build
-from util import build_loss_func, build_optim, build_scheduler
-from util import plot_progress, log_progress, get_agent_ratio, get_env_info
+from utils import build_loss_func, build_optim, build_scheduler
+from utils import plot_progress, log_progress, get_agent_ratio, get_env_info
 
 def train(cfg, args):
     """train model
@@ -49,25 +49,16 @@ def sl_train(cfg):
         shuffle=True, num_workers=cfg['sl']['dataset']['num_workers'])
     val_dataloader = DataLoader(val_dataset, batch_size=batch, \
         shuffle=False, num_workers=cfg['sl']['dataset']['num_workers'])
-
-    ##############################
-    #       Training SetUp       #
-    ##############################
     
-    # loss / optim / scheduler / ...
-    loss_func = build_loss_func(cfg, args)
-    optim = build_optim(cfg, args, model)
-    scheduler = build_scheduler(cfg, args, [optim])
-    epochs = cfg['train']['sl']['epochs']
+    ##############################
+    #       BUILD MODEL          #
+    ##############################
     device = cfg['train']['device']
     if device == 'cuda':
         if not torch.cuda.is_available():
             print('Cuda is unavailable. Replay the device with cpu.')
             device = 'cpu'
-    
-    ##############################
-    #       BUILD MODEL          #
-    ##############################
+            
     model = model_build().to(device)
     if args.resume:
         checkpoint = torch.load(args.resume_path)
@@ -78,6 +69,16 @@ def sl_train(cfg):
     else:
         os.makedirs(cfg['train']['save_path'], exist_ok=True)
         start_epoch = 1
+
+    ##############################
+    #       Training SetUp       #
+    ##############################
+    
+    # loss / optim / scheduler / ...
+    loss_func = build_loss_func(cfg, args)
+    optim = build_optim(cfg, args, model)
+    scheduler = build_scheduler(cfg, args, [optim])
+    epochs = cfg['train']['sl']['epochs']
 
     history = {"T_loss": [], "V_loss": []}
 
@@ -127,7 +128,17 @@ def rl_train(cfg, args):
     """train model by reinforcement learning
     
         
-    """
+    """    
+    ##############################
+    #       BUILD MODEL          #
+    ##############################
+    if device == 'cuda':
+        if not torch.cuda.is_available():
+            print('Cuda is unavailable. Replay the device with cpu.')
+            device = 'cpu'
+    model = model_build(cfg, args).to(device)
+
+
     ##############################
     #       Training SetUp       #
     ##############################
@@ -138,11 +149,7 @@ def rl_train(cfg, args):
     actor_scheduler, critic_scheduler = build_scheduler(cfg, args, [actor_optim, critic_optim])
     episodes = cfg['train']['rl']['episodes']
     device = cfg['train']['device']
-    if device == 'cuda':
-        if not torch.cuda.is_available():
-            print('Cuda is unavailable. Replay the device with cpu.')
-            device = 'cpu'
-    
+
     # set other agents for training
     play_history = defaultdict(lambda: [0, 0])
     for agent_file in os.listdir('./other_agents'):
@@ -152,13 +159,6 @@ def rl_train(cfg, args):
     print(f'other agents : {play_history.keys()}')
     agents_ratio = get_agent_ratio(play_history)
 
-    # set environment
-    env = KoreGymEnv()
-    
-    ##############################
-    #       BUILD MODEL          #
-    ##############################
-    model = model_build(cfg, args).to(device)
     if args.resume:
         checkpoint = torch.load(args.resume_path)
         model.load_state_dict(checkpoint['model_state_dict'])
@@ -170,6 +170,9 @@ def rl_train(cfg, args):
     else:
         os.makedirs(cfg['train']['save_path'], exist_ok=True)
         episode = 1
+
+    # set environment
+    env = KoreGymEnv()
     model.env = env
     model.episode = episode
 
@@ -187,47 +190,24 @@ def rl_train(cfg, args):
         
         batch_obs, batch_acts, batch_log_probs, batch_rtgs, play_history = get_env_info(model, agents, play_history)
 
-        # Calculate advantage at k-th iteration
         V, _ = model.evaluate(batch_obs, batch_acts)
-        A_k = batch_rtgs - V.detach()                                                                       # ALG STEP 5
-
-        # One of the only tricks I use that isn't in the pseudocode. Normalizing advantages
-        # isn't theoretically necessary, but in practice it decreases the variance of 
-        # our advantages and makes convergence much more stable and faster. I added this because
-        # solving some environments was too unstable without it.
+        A_k = batch_rtgs - V.detach()
         A_k = (A_k - A_k.mean()) / (A_k.std() + 1e-10)
 
-        # This is the loop where we update our network for some n epochs
-        for _ in range(model.n_updates_per_iteration):                                                       # ALG STEP 6 & 7
-            # Calculate V_phi and pi_theta(a_t | s_t)
+        for _ in range(model.n_updates_per_iteration):
             V, curr_log_probs = model.evaluate(batch_obs, batch_acts)
-
-            # Calculate the ratio pi_theta(a_t | s_t) / pi_theta_k(a_t | s_t)
-            # NOTE: we just subtract the logs, which is the same as
-            # dividing the values and then canceling the log with e^log.
-            # For why we use log probabilities instead of actual probabilities,
-            # here's a great explanation: 
-            # https://cs.stackexchange.com/questions/70518/why-do-we-use-the-log-in-gradient-based-reinforcement-algorithms
-            # TL;DR makes gradient ascent easier behind the scenes.
             ratios = torch.exp(curr_log_probs - batch_log_probs)
 
-            # Calculate surrogate losses.
             surr1 = ratios * A_k
             surr2 = torch.clamp(ratios, 1 - model.clip, 1 + model.clip) * A_k
 
-            # Calculate actor and critic losses.
-            # NOTE: we take the negative min of the surrogate losses because we're trying to maximize
-            # the performance function, but Adam minimizes the loss. So minimizing the negative
-            # performance function maximizes it.
             actor_loss = actor_loss_func(surr1, surr2)
             critic_loss = critic_loss_func(V, batch_rtgs)
 
-            # Calculate gradients and perform backward propagation for actor network
             actor_optim.zero_grad()
             actor_loss.backward(retain_graph=True)
             actor_optim.step()
 
-            # Calculate gradients and perform backward propagation for critic network
             critic_optim.zero_grad()
             critic_loss.backward()
             critic_optim.step()

@@ -1,0 +1,15 @@
+self_features_dim: 4
+scalar_features_dim: 3
+raw_cell_features_dim: 6
+cell_size: 21
+encoded_cell_features_dim: 128
+unified_features_dim: 135 # 4+3+128
+encoded_input_dim: 64
+rnn_input_dim: 6
+rnn_hidden_dim: 16
+rnn_num_layers: 2
+action1_1_dim: 3 # action type: launch, build, No op
+action1_2_dim: 1 # ship number mean
+action2_1_dim: 6 # direction: N, E, W, S, C, <SOS>
+action2_2_dim: 1 # step mean
+max_action_len: 12

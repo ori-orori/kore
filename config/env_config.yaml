@@ -1,0 +1,12 @@
+cell_features_dim: 6
+max_episode_steps: 400
+max_observable_kore: 500
+max_fleet_ships: 100
+max_fleet_kore: 1000
+max_overlap_fleets: 10
+max_shipyard_ships: 300
+max_kore_in_reserve: 40000
+flight_discount_factor: 0.99
+max_launch_ships: 100
+max_build_ships: 10
+max_flight_plan_int: 10

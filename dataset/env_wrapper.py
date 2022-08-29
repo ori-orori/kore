@@ -2,43 +2,41 @@ import os
 import sys
 sys.path.append(os.path.dirname(os.path.abspath(os.path.dirname(__file__))))
 
+import yaml
 import gym
 import numpy as np
 from kaggle_environments import make
 from kaggle_environments.envs.kore_fleets.helpers import ShipyardAction, Board, Direction
 
-from config.config import (
-    N_FEATURES,
-    GAME_AGENTS,
-    GAME_CONFIG,
-    DTYPE,
-    MAX_OBSERVABLE_KORE,
-    MAX_FLEET_SHIPS,
-    MAX_FLEET_KORE,
-    MAX_OVERLAP_FLEETS,
-    MAX_SHIPYARD_SHIPS,
-    MAX_KORE_IN_RESERVE,
-    FLIGHT_DISCOUNT_FACTOR,
-    MAX_LAUNCH_SHIPS,
-    MAX_BUILD_SHIPS,
-    MAX_FLIGHT_PLAN_INT
-)
+env_config_path = './config/model_config.yaml'
+with open(env_config_path, 'r') as f:
+    cfg = yaml.safe_load(f)
 
-import json
-
+# setting constant
+N_FEATURES = cfg['cell_features_dim']
+MAX_EPISODE_STEPS = cfg['max_episode_steps']
+MAX_OBSERVABLE_KORE = cfg['max_observable_kore']
+MAX_FLEET_SHIPS = cfg['max_fleet_ships']
+MAX_FLEET_KORE = cfg['max_fleet_kore']
+MAX_OVERLAP_FLEETS = cfg['max_overlap_fleets']
+MAX_SHIPYARD_SHIPS = cfg['max_shipyard_ships']
+MAX_KORE_IN_RESERVE = cfg['max_kore_in_reserve']
+FLIGHT_DISCOUNT_FACTOR = cfg['flight_discount_factor']
+MAX_LAUNCH_SHIPS = cfg['max_launch_ships']
+MAX_BUILD_SHIPS = cfg['max_build_ships']
+MAX_FLIGHT_PLAN_INT = cfg['max_flight_plan_int']
 
 class KoreGymEnv(gym.Env):
     def __init__(self, config=None, agents=None, env=None):
         super(KoreGymEnv, self).__init__()
 
-        if config is None:
-            config = GAME_CONFIG
-        if agents is None:
-            self.agents = GAME_AGENTS            
+        self.config = config
+        self.agents = agents
         if env is None:
             self.env = make("kore_fleets", configuration=config)
         else:
             self.env = env
+            
         self.config = self.env.configuration
         self.trainer = None
         self.raw_obs = None
@@ -61,8 +59,8 @@ class KoreGymEnv(gym.Env):
         if done:
             player = int(self.raw_obs.player)
             opponent = 1 - player
-            agent_reward = self.raw_obs.players[player][0]
-            opponent_reward = self.raw_obs.players[opponent][0]
+            agent_reward = self.raw_obs["players"][player][0]
+            opponent_reward = self.raw_obs["players"][opponent][0]
             self.reward = 1.0 if agent_reward > opponent_reward else -1.0
         else:
             self.reward = 0.0
@@ -266,7 +264,7 @@ class KoreGymEnv(gym.Env):
         player = board.current_player
         opponent = board.opponents[0]
         progress = clip_normalize(
-            board.step, low_in=0, high_in=GAME_CONFIG['episodeSteps'], low_out=0, high_out=1)
+            board.step, low_in=0, high_in=MAX_EPISODE_STEPS, low_out=0, high_out=1)
         my_kore = clip_normalize(player.kore, low_in=0, high_in=MAX_KORE_IN_RESERVE)
         opponent_kore = clip_normalize(opponent.kore, low_in=0, high_in=MAX_KORE_IN_RESERVE)
         states = []
@@ -567,7 +565,7 @@ class KoreGymEnv(gym.Env):
         player = board.current_player
         opponent = board.opponents[0]
         progress = clip_normalize(
-            board.step, low_in=0, high_in=GAME_CONFIG['episodeSteps'], low_out=0, high_out=1)
+            board.step, low_in=0, high_in=MAX_EPISODE_STEPS, low_out=0, high_out=1)
         my_kore = clip_normalize(player.kore, low_in=0, high_in=MAX_KORE_IN_RESERVE)
         opponent_kore = clip_normalize(opponent.kore, low_in=0, high_in=MAX_KORE_IN_RESERVE)
         states = []
