@@ -30,6 +30,4 @@ train:
   device: 'cpu'
   
 model:
-  cnn_features_dim: 128
-  scalar_features_dim: 3
-  self_features_dim: 4
+  config_path: './config/model_config.yaml'

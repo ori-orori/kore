@@ -6,20 +6,20 @@ import torch
 import torch.nn as nn
 
 from models.ppo import PPO
-from models.cnn import CNNEncoder
+from models.encoder import CellFeatureEncoder
 
-def build_model(cfg, args):
-    return UnifiedModel(cfg, args)
+def build_model(cfg):
+    return UnifiedModel(cfg)
 
 class UnifiedModel(nn.Module):
-    def __init__(self, cfg, args):
+    def __init__(self, cfg):
         super().__init__()
-        self.ppo_model = PPO(cfg, args)
-        self.cnn_encoder = CNNEncoder(cfg, args)
+        self.ppo_model = PPO(cfg)
+        self.cnn_encoder = CellFeatureEncoder(cfg)
 
     def forward(self, x):
         cell_features, scalar_features, self_features = x
         encoded_cell_features = self.cnn_encoder(cell_features)
-        unified_features = torch.cat((cell_features, scalar_features, self_features), dim=1)
+        unified_features = torch.cat((encoded_cell_features, scalar_features, self_features), dim=1)
         value, action = self.ppo_model(unified_features)
         return value, action

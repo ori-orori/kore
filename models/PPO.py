@@ -1,253 +1,238 @@
+import numpy as np
+import time
 import torch
 import torch.nn as nn
-from torch.distributions import MultivariateNormal
-from torch.distributions import Categorical
+import torch.nn.functional as F
+from torch.distributions import Categorical, Normal
 
-################################## set device ##################################
-print("============================================================================================")
-# set device to cpu or cuda
-device = torch.device('cpu')
-if(torch.cuda.is_available()): 
-    device = torch.device('cuda:0') 
-    torch.cuda.empty_cache()
-    print("Device set to : " + str(torch.cuda.get_device_name(device)))
-else:
-    print("Device set to : cpu")
-print("============================================================================================")
-
-
-################################## PPO Policy ##################################
-class RolloutBuffer:
-    def __init__(self):
-        self.actions = []
-        self.states = []
-        self.logprobs = []
-        self.rewards = []
-        self.is_terminals = []
-    
-    def clear(self):
-        del self.actions[:]
-        del self.states[:]
-        del self.logprobs[:]
-        del self.rewards[:]
-        del self.is_terminals[:]
-
-
-class ActorCritic(nn.Module):
-    def __init__(self, state_dim, action_dim, has_continuous_action_space, action_std_init):
-        super(ActorCritic, self).__init__()
-
-        self.has_continuous_action_space = has_continuous_action_space
-        
-        if has_continuous_action_space:
-            self.action_dim = action_dim
-            self.action_var = torch.full((action_dim,), action_std_init * action_std_init).to(device)
-        # actor
-        if has_continuous_action_space :
-            self.actor = nn.Sequential(
-                            nn.Linear(state_dim, 64),
-                            nn.Tanh(),
-                            nn.Linear(64, 64),
-                            nn.Tanh(),
-                            nn.Linear(64, action_dim),
+class Encoder(nn.Module):
+    def __init__(self, cfg):
+        super(Encoder, self).__init__()
+        self.unified_features_dim = cfg['unified_features_dim']
+        self.encoded_input_dim = cfg['encoded_input_dim']
+        self.encoder = nn.Sequential(
+                        nn.Linear(self.unified_features_dim, self.encoded_input_dim)
                         )
-        else:
-            self.actor = nn.Sequential(
-                            nn.Linear(state_dim, 64),
-                            nn.Tanh(),
-                            nn.Linear(64, 64),
-                            nn.Tanh(),
-                            nn.Linear(64, action_dim),
-                            nn.Softmax(dim=-1)
-                        )
-        # critic
+
+    def forward(self, unified_features):
+        return self.encoder(unified_features)
+
+
+class Critic(nn.Module):
+    def __init__(self, cfg):
+        super().__init__()
+        self.encoded_input_dim = cfg['encoded_input_dim']
         self.critic = nn.Sequential(
-                        nn.Linear(state_dim, 64),
-                        nn.Tanh(),
-                        nn.Linear(64, 64),
-                        nn.Tanh(),
-                        nn.Linear(64, 1)
-                    )
-        
-    def set_action_std(self, new_action_std):
-        if self.has_continuous_action_space:
-            self.action_var = torch.full((self.action_dim,), new_action_std * new_action_std).to(device)
-        else:
-            print("--------------------------------------------------------------------------------------------")
-            print("WARNING : Calling ActorCritic::set_action_std() on discrete action space policy")
-            print("--------------------------------------------------------------------------------------------")
-
-    def forward(self):
-        raise NotImplementedError
+                    nn.Linear(self.encoded_input_dim, 32),
+                    nn.Tanh(),
+                    nn.Linear(32, 1)
+                )
     
-    def act(self, state):
-        if self.has_continuous_action_space:
-            action_mean = self.actor(state)
-            cov_mat = torch.diag(self.action_var).unsqueeze(dim=0)
-            dist = MultivariateNormal(action_mean, cov_mat)
-        else:
-            action_probs = self.actor(state)
-            dist = Categorical(action_probs)
+    def forward(self, batch_state):
+        return self.critic(batch_state)
 
-        action = dist.sample()
-        action_logprob = dist.log_prob(action)
+class Actor(nn.Module):
+    def __init__(self, cfg):
+        super().__init__()
+        self.input_dim = cfg['encoded_input_dim']
+        self.rnn_input_dim = cfg['rnn_input_dim']
+        self.rnn_hidden_dim = cfg['rnn_hidden_dim']
+        self.rnn_num_layers = cfg['rnn_num_layers']
+        self.action1_1_dim = cfg['action1_1_dim']
+        self.action1_2_dim = cfg['action1_2_dim']
+        self.action2_1_dim = cfg['action2_1_dim']
+        self.action2_2_dim = cfg['action2_2_dim']
+        self.max_action_len = cfg['max_action_len']
+
+        self.encoder = nn.Linear(self.input_dim+2, self.rnn_hidden_dim)
+        self.actor1_1 = nn.Linear(self.input_dim, 3)
+        self.actor1_2 = nn.Linear(self.input_dim+1, 1)
+        self.actor2 = nn.GRU(input_size=self.rnn_input_dim, hidden_size=self.rnn_hidden_dim, num_layers=self.rnn_num_layers, bias=False, batch_first=True)
+        self.actor2_1 = nn.Linear(self.rnn_hidden_dim, self.action2_1_dim)
+        self.actor2_2 = nn.Linear(self.rnn_hidden_dim, self.action2_2_dim)
+
+    def forward(self, batch_state, batch_action=None, evaluate=False):
+        self.batch_size = batch_state.size(0)
+        
+        action_logprob = torch.zeros((self.batch_size, 1))
+
+        action1_1_output = self.actor1_1(batch_state)
+        action1_1_prob = F.softmax(action1_1_output, dim=1)
+        action1_1_dist = Categorical(action1_1_prob)
+        if not evaluate: # supervised learning
+            action1_1 = action1_1_dist.sample().to(torch.float).unsqueeze(0)
+            action1_1_logprob = action1_1_dist.log_prob(action1_1)
+        else:
+            action1_1 = batch_action[:, 0]
+            action1_1_logprob = action1_1_dist.log_prob(action1_1)
+        action_logprob += action1_1_logprob
+
+        action1_2_mean = self.actor1_2(torch.cat((batch_state, action1_1), dim=1))
+        std = torch.full(size=(self.batch_size, self.action1_2_dim), fill_value=0.1)
+        action1_2_dist = Normal(action1_2_mean, std)
+        if not evaluate: # supervised learning
+            action1_2 = action1_2_dist.sample()
+            action1_2_logprob = action1_2_dist.log_prob(action1_2)
+        else:
+            action1_2 = batch_action[:, 1]
+            action1_2_logprob = action1_2_dist.log_prob(action1_2)
+        action_logprob += action1_2_logprob
+
+        action1 = torch.cat((action1_1, action1_2), dim=1)
+
+        rnn_input, action2_hidden = self.create_input_action(batch_state, batch_action, action1)
+
+        if batch_action is None: # reinforcement learning 
+            action2, action2_1, action2_2 = None, [None], [None]
+            action_len = 2
+            while (action2_1[0] != 5) and (action_len < self.max_action_len):
+                action2_output, action2_hidden = self.actor2(rnn_input, action2_hidden)
+                action2_output = action2_output.squeeze(0)
+                if action_len % 2 == 0: # direction
+                    action2_1_output = self.actor2_1(action2_output)
+                    action2_1_prob = F.softmax(action2_1_output, dim=1)
+                    action2_1_dist = Categorical(action2_1_prob)
+                    action2_1 = action2_1_dist.sample().to(torch.float).unsqueeze(0)
+                    action2_1_logprob = action2_1_dist.log_prob(action2_1)
+                    action_logprob += action2_1_logprob
+                    if action2 is None: # first prediction
+                        action2 = action2_1
+                    else:
+                        action2 = torch.cat((action2, action2_1), dim=1)
+                    
+                else: # step
+                    action2_2_mean = self.actor2_2(action2_output)
+                    std = torch.full(size=(self.batch_size, 1), fill_value=0.1)
+                    action2_2_dist = Normal(action2_2_mean, std)
+                    action2_2 = action2_2_dist.sample()
+                    action2_2_logprob = action2_2_dist.log_prob(action2_2)
+                    action_logprob += action2_2_logprob
+                    action2 = torch.cat((action2, action2_2), dim=1)
+                action_len += 1
+        else: # supervised learning and evaluation
+            action2_output, action2_hidden = self.actor2(rnn_input, action2_hidden)
+            action2_1_index = torch.arange(0, self.max_action_len-2, 2)
+            action2_1_output = action2_output[:, action2_1_index]
+            action2_1_prob = F.softmax(self.actor2_1(action2_1_output), dim=1)
+            action2_1_dist = Categorical(action1_1_prob)
+            if not evaluate: # supervised learning
+                action2_1 = action2_1_dist.sample().to(torch.float)
+                action2_1_logprob = action2_1_dist.log_prob(action2_1)
+            else: # evaluation
+                action2_1 = batch_action[:, action2_1_index]
+                action2_1_logprob = action2_1_dist.log_prob(action2_1)
+            action_logprob += action2_1_logprob
+
+            action2_2_index = torch.arange(1, self.max_action_len-2, 2)
+            action2_2_output = action2_output[:, action2_2_index]
+            action2_2_mean = self.actor2_2(action2_2_output)
+            std = torch.full(size=(self.batch_size, (self.max_action_len)//2), fill_value=0.1)
+            action2_2_dist = Normal(action2_2_mean, std)
+            if not evaluate: # supervised learning
+                action2_2 = action2_2_dist.sample()
+                action2_2_logprob = action2_2_dist.log_prob(action2_2)
+            else: # evaluation
+                action2_2 = batch_action[:, action2_2_index]
+                action2_2_logprob = action2_2_dist.log_prob(action2_2)
+            action_logprob += action2_2_logprob
+
+            action2 = torch.zeros((self.batch_size, self.max_action_len-2))
+            action2[:, action2_1_index] = action2_1
+            action2[:, action2_2_index] = action2_2
+
+        action = torch.cat((action1, action2), dim=1)
+        return action, action_logprob
+
+
+    def create_input_action(self, batch_state, batch_action, action1):
+        if batch_action is None:
+            init_hidden1 = self.encoder((torch.cat((batch_state, action1), dim=1)).unsqueeze(0))
+            rnn_input = F.one_hot(torch.full((self.batch_size, 1), self.rnn_input_dim-1), num_classes=self.rnn_input_dim).to(torch.float)
+        else:
+            init_hidden1 = self.encoder((torch.cat((batch_state, batch_action[:,:2]), dim=1)).unsqueeze(0))
+            rnn_input = torch.zeros(self.batch_size, self.max_action_len-2, self.rnn_input_dim)
+            for i, action in enumerate(batch_action):
+                if action[0] > 0: # action type is launch fleet
+                    rnn_input[i][0][5] = 1.0
+                    for j, char in enumerate(action[1:]):
+                        if j % 2 == 0: # direction
+                            rnn_input[i][j+1][int(char)] = 1.0
+                        else: # step
+                            rnn_input[i][j+1][:] = char
+        init_hidden2 = torch.zeros(self.rnn_num_layers-1, self.batch_size, self.rnn_hidden_dim)
+        init_hidden = torch.cat((init_hidden1, init_hidden2), dim=0)
+        return rnn_input, init_hidden
+
+class PPO(nn.Module):
+    """
+        This is the PPO class we will use as our model in main.py
+    """
+    def __init__(self, cfg):
+        """Initializes the PPO model.
+            Args:
+                input_dim: Input dimension entering the model
+				action_dim: Action dimension
+            Returns:
+                None
+        """
+        # Extract environment information
+        super().__init__()
+        self.env = None
+
+        # Initialize actor and critic networks
+        self.encoder = Encoder(cfg)
+        self.actor = Actor(cfg)
+        self.critic = Critic(cfg)
+
+    def forward(self, state):
+        encoded_state = self.encoder(state)
+        value = self.critic(encoded_state)
+        action, action_logprob = self.actor(encoded_state)
+        
+
+        return value, action
+        
+
+    def get_action(self, state):
+        """
+            Queries an action from the actor network, should be called from rollout.
+            Parameters:
+                state - the state at the current timestep
+            Return:
+                action - the action to take, as a numpy array
+                log_prob - the log probability of the selected action in the distribution
+        """
+        encoded_state = self.encoder(state)
+        action, action_logprob = self.actor(encoded_state)
+        # dist = Categorical(action_probs)
+
+        # action = dist.sample()
+        # action_logprob = dist.log_prob(action)
         
         return action.detach(), action_logprob.detach()
-    
-    def evaluate(self, state, action):
 
-        if self.has_continuous_action_space:
-            action_mean = self.actor(state)
-            
-            action_var = self.action_var.expand_as(action_mean)
-            cov_mat = torch.diag_embed(action_var).to(device)
-            dist = MultivariateNormal(action_mean, cov_mat)
-            
-            # For Single Action Environments.
-            if self.action_dim == 1:
-                action = action.reshape(-1, self.action_dim)
-        else:
-            action_probs = self.actor(state)
-            dist = Categorical(action_probs)
-        action_logprobs = dist.log_prob(action)
-        dist_entropy = dist.entropy()
-        state_values = self.critic(state)
-        
-        return action_logprobs, state_values, dist_entropy
+    def evaluate(self, batch_state, batch_action):
+        """
+            Estimate the values of each observation, and the log probs of
+            each action in the most recent batch with the most recent
+            iteration of the actor network. Should be called from learn.
+            Parameters:
+                batch_state - the state from the most recently collected batch as a tensor.
+                            Shape: (number of timesteps in batch, dimension of state)
+                batch_acts - the actions from the most recently collected batch as a tensor.
+                            Shape: (number of timesteps in batch, dimension of action)
+            Return:
+                V - the predicted values of batch_obs
+                log_probs - the log probabilities of the actions taken in batch_acts given batch_obs
+        """
+        # Query critic network for a value V for each batch_obs. Shape of V should be same as batch_rtgs
+        encoded_state = self.encoder(batch_state)
+        value = self.critic(encoded_state).squeeze()
 
+        action, action_logprobs = self.actor(encoded_state, batch_action)
+        # dist = Categorical(action_probs)
+        # log_probs = dist.log_prob(batch_acts)
 
-class PPO:
-    def __init__(self, state_dim, action_dim, lr_actor, lr_critic, gamma, K_epochs, eps_clip, has_continuous_action_space, action_std_init=0.6):
-
-        self.has_continuous_action_space = has_continuous_action_space
-
-        if has_continuous_action_space:
-            self.action_std = action_std_init
-
-        self.gamma = gamma
-        self.eps_clip = eps_clip
-        self.K_epochs = K_epochs
-        
-        self.buffer = RolloutBuffer()
-
-        self.policy = ActorCritic(state_dim, action_dim, has_continuous_action_space, action_std_init).to(device)
-        self.optimizer = torch.optim.Adam([
-                        {'params': self.policy.actor.parameters(), 'lr': lr_actor},
-                        {'params': self.policy.critic.parameters(), 'lr': lr_critic}
-                    ])
-
-        self.policy_old = ActorCritic(state_dim, action_dim, has_continuous_action_space, action_std_init).to(device)
-        self.policy_old.load_state_dict(self.policy.state_dict())
-        
-        self.MseLoss = nn.MSELoss()
-
-    def set_action_std(self, new_action_std):
-        if self.has_continuous_action_space:
-            self.action_std = new_action_std
-            self.policy.set_action_std(new_action_std)
-            self.policy_old.set_action_std(new_action_std)
-        else:
-            print("--------------------------------------------------------------------------------------------")
-            print("WARNING : Calling PPO::set_action_std() on discrete action space policy")
-            print("--------------------------------------------------------------------------------------------")
-
-    def decay_action_std(self, action_std_decay_rate, min_action_std):
-        print("--------------------------------------------------------------------------------------------")
-        if self.has_continuous_action_space:
-            self.action_std = self.action_std - action_std_decay_rate
-            self.action_std = round(self.action_std, 4)
-            if (self.action_std <= min_action_std):
-                self.action_std = min_action_std
-                print("setting actor output action_std to min_action_std : ", self.action_std)
-            else:
-                print("setting actor output action_std to : ", self.action_std)
-            self.set_action_std(self.action_std)
-
-        else:
-            print("WARNING : Calling PPO::decay_action_std() on discrete action space policy")
-        print("--------------------------------------------------------------------------------------------")
-
-    def select_action(self, state):
-
-        if self.has_continuous_action_space:
-            with torch.no_grad():
-                state = torch.FloatTensor(state).to(device)
-                action, action_logprob = self.policy_old.act(state)
-
-            self.buffer.states.append(state)
-            self.buffer.actions.append(action)
-            self.buffer.logprobs.append(action_logprob)
-
-            return action.detach().cpu().numpy().flatten()
-        else:
-            with torch.no_grad():
-                state = torch.FloatTensor(state).to(device)
-                action, action_logprob = self.policy_old.act(state)
-            
-            self.buffer.states.append(state)
-            self.buffer.actions.append(action)
-            self.buffer.logprobs.append(action_logprob)
-
-            return action.item()
-
-    def update(self):
-        # Monte Carlo estimate of returns
-        rewards = []
-        discounted_reward = 0
-        for reward, is_terminal in zip(reversed(self.buffer.rewards), reversed(self.buffer.is_terminals)):
-            if is_terminal:
-                discounted_reward = 0
-            discounted_reward = reward + (self.gamma * discounted_reward)
-            rewards.insert(0, discounted_reward)
-            
-        # Normalizing the rewards
-        rewards = torch.tensor(rewards, dtype=torch.float32).to(device)
-        rewards = (rewards - rewards.mean()) / (rewards.std() + 1e-7)
-
-        # convert list to tensor
-        old_states = torch.squeeze(torch.stack(self.buffer.states, dim=0)).detach().to(device)
-        old_actions = torch.squeeze(torch.stack(self.buffer.actions, dim=0)).detach().to(device)
-        old_logprobs = torch.squeeze(torch.stack(self.buffer.logprobs, dim=0)).detach().to(device)
-
-        # Optimize policy for K epochs
-        for _ in range(self.K_epochs):
-
-            # Evaluating old actions and values
-            logprobs, state_values, dist_entropy = self.policy.evaluate(old_states, old_actions)
-
-            # match state_values tensor dimensions with rewards tensor
-            state_values = torch.squeeze(state_values)
-            
-            # Finding the ratio (pi_theta / pi_theta__old)
-            ratios = torch.exp(logprobs - old_logprobs.detach())
-
-            # Finding Surrogate Loss
-            advantages = rewards - state_values.detach()   
-            surr1 = ratios * advantages
-            surr2 = torch.clamp(ratios, 1-self.eps_clip, 1+self.eps_clip) * advantages
-
-            # final loss of clipped objective PPO
-            loss = -torch.min(surr1, surr2) + 0.5*self.MseLoss(state_values, rewards) - 0.01*dist_entropy
-            
-            # take gradient step
-            self.optimizer.zero_grad()
-            loss.mean().backward()
-            self.optimizer.step()
-            
-        # Copy new weights into old policy
-        self.policy_old.load_state_dict(self.policy.state_dict())
-
-        # clear buffer
-        self.buffer.clear()
-    
-    def save(self, checkpoint_path):
-        torch.save(self.policy_old.state_dict(), checkpoint_path)
-   
-    def load(self, checkpoint_path):
-        self.policy_old.load_state_dict(torch.load(checkpoint_path, map_location=lambda storage, loc: storage))
-        self.policy.load_state_dict(torch.load(checkpoint_path, map_location=lambda storage, loc: storage))
-        
-        
-       
-
-
+        # Return the value vector V of each observation in the batch
+        # and log probabilities log_probs of each action in the batch
+        return value, action_logprobs

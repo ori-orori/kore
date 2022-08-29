@@ -2,42 +2,41 @@ import os
 import sys
 sys.path.append(os.path.dirname(os.path.abspath(os.path.dirname(__file__))))
 
+import yaml
 import gym
 import numpy as np
 from kaggle_environments import make
 from kaggle_environments.envs.kore_fleets.helpers import ShipyardAction, Board, Direction
 
-from config.config import (
-    N_FEATURES,
-    GAME_AGENTS,
-    GAME_CONFIG,
-    MAX_OBSERVABLE_KORE,
-    MAX_FLEET_SHIPS,
-    MAX_FLEET_KORE,
-    MAX_OVERLAP_FLEETS,
-    MAX_SHIPYARD_SHIPS,
-    MAX_KORE_IN_RESERVE,
-    FLIGHT_DISCOUNT_FACTOR,
-    MAX_LAUNCH_SHIPS,
-    MAX_BUILD_SHIPS,
-    MAX_FLIGHT_PLAN_INT
-)
+env_config_path = './config/model_config.yaml'
+with open(env_config_path, 'r') as f:
+    cfg = yaml.safe_load(f)
 
-import json
-
+# setting constant
+N_FEATURES = cfg['cell_features_dim']
+MAX_EPISODE_STEPS = cfg['max_episode_steps']
+MAX_OBSERVABLE_KORE = cfg['max_observable_kore']
+MAX_FLEET_SHIPS = cfg['max_fleet_ships']
+MAX_FLEET_KORE = cfg['max_fleet_kore']
+MAX_OVERLAP_FLEETS = cfg['max_overlap_fleets']
+MAX_SHIPYARD_SHIPS = cfg['max_shipyard_ships']
+MAX_KORE_IN_RESERVE = cfg['max_kore_in_reserve']
+FLIGHT_DISCOUNT_FACTOR = cfg['flight_discount_factor']
+MAX_LAUNCH_SHIPS = cfg['max_launch_ships']
+MAX_BUILD_SHIPS = cfg['max_build_ships']
+MAX_FLIGHT_PLAN_INT = cfg['max_flight_plan_int']
 
 class KoreGymEnv(gym.Env):
     def __init__(self, config=None, agents=None, env=None):
         super(KoreGymEnv, self).__init__()
 
-        if config is None:
-            config = GAME_CONFIG
-        if agents is None:
-            self.agents = GAME_AGENTS            
+        self.config = config
+        self.agents = agents
         if env is None:
             self.env = make("kore_fleets", configuration=config)
         else:
             self.env = env
+            
         self.config = self.env.configuration
         self.trainer = None
         self.raw_obs = None
@@ -265,7 +264,7 @@ class KoreGymEnv(gym.Env):
         player = board.current_player
         opponent = board.opponents[0]
         progress = clip_normalize(
-            board.step, low_in=0, high_in=GAME_CONFIG['episodeSteps'], low_out=0, high_out=1)
+            board.step, low_in=0, high_in=MAX_EPISODE_STEPS, low_out=0, high_out=1)
         my_kore = clip_normalize(player.kore, low_in=0, high_in=MAX_KORE_IN_RESERVE)
         opponent_kore = clip_normalize(opponent.kore, low_in=0, high_in=MAX_KORE_IN_RESERVE)
         states = []
@@ -566,7 +565,7 @@ class KoreGymEnv(gym.Env):
         player = board.current_player
         opponent = board.opponents[0]
         progress = clip_normalize(
-            board.step, low_in=0, high_in=GAME_CONFIG['episodeSteps'], low_out=0, high_out=1)
+            board.step, low_in=0, high_in=MAX_EPISODE_STEPS, low_out=0, high_out=1)
         my_kore = clip_normalize(player.kore, low_in=0, high_in=MAX_KORE_IN_RESERVE)
         opponent_kore = clip_normalize(opponent.kore, low_in=0, high_in=MAX_KORE_IN_RESERVE)
         states = []
@@ -640,14 +639,14 @@ def clip_normalize(x, low_in, high_in, low_out=0.0, high_out=1.0):
     return a * x + b
 
 # test
-env = KoreGymEnv()
+# env = KoreGymEnv()
 # obs = env.reset([None, '../other_agents/beta_1st.py'])
-obs = env.reset(['../other_agents/beta_1st.py', None])
+# obs = env.reset(['../other_agents/beta_1st.py', None])
 # env.step({'0':[0]})
 # env.step({'0':[0]})
 # env.step({'0':[-0.3]})
 # print(env.raw_obs)
-print(env.raw_obs["players"])
+# print(env.raw_obs["players"])
 # print(dir(env.raw_obs))
 # print(env.board)
 # print(env.raw_obs.player)
