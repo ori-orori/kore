@@ -8,7 +8,7 @@ import numpy as np
 from kaggle_environments import make
 from kaggle_environments.envs.kore_fleets.helpers import ShipyardAction, Board, Direction
 
-env_config_path = './config/model_config.yaml'
+env_config_path = '../config/env_config.yaml'
 with open(env_config_path, 'r') as f:
     cfg = yaml.safe_load(f)
 
@@ -618,7 +618,7 @@ def clip_normalize(x, low_in, high_in, low_out=0.0, high_out=1.0):
 
     Examples:
         >>> clip_normalize(50, low_in=0, high_in=100)
-        0.0
+        0.5
 
         >>> clip_normalize(np.array([-1, .5, 99]), low_in=-1, high_in=1, low_out=0, high_out=2)
         array([0., 1.5, 2.])
