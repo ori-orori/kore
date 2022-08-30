@@ -8,7 +8,7 @@ import torch.nn as nn
 from models.ppo import PPO
 from models.encoder import CellFeatureEncoder
 
-def build_model(cfg):
+def model_build(cfg):
     return UnifiedModel(cfg)
 
 class UnifiedModel(nn.Module):
@@ -17,8 +17,8 @@ class UnifiedModel(nn.Module):
         self.ppo_model = PPO(cfg)
         self.cnn_encoder = CellFeatureEncoder(cfg)
 
-    def forward(self, x):
-        cell_features, scalar_features, self_features = x
+    def forward(self, state):
+        cell_features, scalar_features, self_features = state
         encoded_cell_features = self.cnn_encoder(cell_features)
         unified_features = torch.cat((encoded_cell_features, scalar_features, self_features), dim=1)
         value, action = self.ppo_model(unified_features)

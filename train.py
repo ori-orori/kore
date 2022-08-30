@@ -1,6 +1,8 @@
 import os
 import yaml
 import argparse
+import time
+from tqdm import tqdm
 from collections import defaultdict
 
 import numpy as np
@@ -9,7 +11,7 @@ import torch.nn as nn
 from torch.utils.data import DataLoader, random_split
 
 from dataset.env_wrapper import KoreGymEnv
-from dataset.dataset import Dataset
+from dataset.custom_dataset import KoreDataset
 from models.model_factory import model_build
 from utils import build_loss_func, build_optim, build_scheduler
 from utils import plot_progress, log_progress, get_agent_ratio, get_env_info
@@ -27,28 +29,28 @@ def train(cfg, args):
     else:
         raise ValueError('train mode must one of ["sl", "rl"]')
 
-def sl_train(cfg):
+def sl_train(cfg, args):
     """train model by supervised learning
 
     """
     ##############################
     #       DataLoader           #
     ##############################
-    dataset = Dataset(cfg['sl']['dataset']['txt_path'])
+    dataset = KoreDataset(cfg)
     dataset_size = len(dataset)
-    train_size = int(dataset_size*cfg['sl']['dataset']['train_val_ratio'])
+    train_size = int(dataset_size*cfg['train']['sl']['dataset']['train_ratio'])
     val_size = dataset_size - train_size
     train_dataset, val_dataset = random_split(dataset, [train_size, val_size])
 
     print(f"Training dataset size : {len(train_dataset)}")
     print(f"Validation dataset size : {len(val_dataset)}")
 
-    batch = cfg['sl']['dataset']['batch_size']
+    batch = cfg['train']['sl']['dataset']['batch_size']
 
     train_dataloader = DataLoader(train_dataset, batch_size=batch, \
-        shuffle=True, num_workers=cfg['sl']['dataset']['num_workers'])
+        shuffle=True, num_workers=cfg['train']['sl']['dataset']['num_workers'])
     val_dataloader = DataLoader(val_dataset, batch_size=batch, \
-        shuffle=False, num_workers=cfg['sl']['dataset']['num_workers'])
+        shuffle=False, num_workers=cfg['train']['sl']['dataset']['num_workers'])
     
     ##############################
     #       BUILD MODEL          #
@@ -59,7 +61,9 @@ def sl_train(cfg):
             print('Cuda is unavailable. Replay the device with cpu.')
             device = 'cpu'
             
-    model = model_build().to(device)
+    with open(cfg['model']['config_path'], 'r') as f:
+        model_cfg = yaml.safe_load(f)
+    model = model_build(model_cfg).to(device)
     if args.resume:
         checkpoint = torch.load(args.resume_path)
         model.load_state_dict(checkpoint['model_state_dict'])
@@ -67,7 +71,7 @@ def sl_train(cfg):
         scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
         start_epoch = checkpoint['epoch']
     else:
-        os.makedirs(cfg['train']['save_path'], exist_ok=True)
+        os.makedirs(cfg['train']['sl']['save_path'], exist_ok=True)
         start_epoch = 1
 
     ##############################
@@ -89,11 +93,16 @@ def sl_train(cfg):
     for epoch in range(start_epoch, epochs+1):
         model.train()
         training_loss = 0.0
-        for i, (state, action) in enumerate(train_dataloader):
+        for i, (state, action) in enumerate(tqdm((train_dataloader))):
             # TODO : get state and action from dataloader
             # state, action = ....
             optim.zero_grad()
-            prediction = model(state)
+            a = time.time()
+            _, prediction = model(state)
+            print(time.time() - a)
+            a = time.time()
+            print('prediction:',prediction)
+            print('action:',action)
             loss = loss_func(prediction, action)
             training_loss += loss.item()
             loss.backward()
@@ -112,7 +121,6 @@ def sl_train(cfg):
                 loss = loss_func(prediction, action)
                 validating_loss += loss.item()
 
-            print(f"(Finish) Epoch : {epoch}/{epochs} >>>> Validation loss : {validating_loss/len(val_dataloader):.6f}")
             history["V_loss"].append(validating_loss/len(val_dataloader))
 
         torch.save(
@@ -243,5 +251,5 @@ if __name__ == "__main__":
 
     with open(args.config, 'r') as f:
         cfg = yaml.safe_load(f)
-    
+
     train(cfg, args)

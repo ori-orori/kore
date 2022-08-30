@@ -54,9 +54,11 @@ class Actor(nn.Module):
     def forward(self, batch_state, batch_action=None, evaluate=False):
         self.batch_size = batch_state.size(0)
         
+        action_output = [] # for train
         action_logprob = torch.zeros((self.batch_size, 1))
 
         action1_1_output = self.actor1_1(batch_state)
+        action_output.append(action1_1_output)
         action1_1_prob = F.softmax(action1_1_output, dim=1)
         action1_1_dist = Categorical(action1_1_prob)
         if not evaluate: # supervised learning
@@ -68,6 +70,7 @@ class Actor(nn.Module):
         action_logprob += action1_1_logprob
 
         action1_2_mean = self.actor1_2(torch.cat((batch_state, action1_1), dim=1))
+        action_output.append(action1_2_mean)
         std = torch.full(size=(self.batch_size, self.action1_2_dim), fill_value=0.1)
         action1_2_dist = Normal(action1_2_mean, std)
         if not evaluate: # supervised learning
@@ -141,7 +144,7 @@ class Actor(nn.Module):
             action2[:, action2_2_index] = action2_2
 
         action = torch.cat((action1, action2), dim=1)
-        return action, action_logprob
+        return action, action_logprob, action_output
 
 
     def create_input_action(self, batch_state, batch_action, action1):
@@ -187,7 +190,7 @@ class PPO(nn.Module):
     def forward(self, state):
         encoded_state = self.encoder(state)
         value = self.critic(encoded_state)
-        action, action_logprob = self.actor(encoded_state)
+        action, action_logprob, action = self.actor(encoded_state)
         
 
         return value, action

@@ -8,7 +8,7 @@ import numpy as np
 from kaggle_environments import make
 from kaggle_environments.envs.kore_fleets.helpers import ShipyardAction, Board, Direction
 
-env_config_path = './config/model_config.yaml'
+env_config_path = './config/env_config.yaml'
 with open(env_config_path, 'r') as f:
     cfg = yaml.safe_load(f)
 
@@ -27,6 +27,7 @@ MAX_BUILD_SHIPS = cfg['max_build_ships']
 MAX_FLIGHT_PLAN_INT = cfg['max_flight_plan_int']
 
 class KoreGymEnv(gym.Env):
+    CONFIG = make("kore_fleets").configuration
     def __init__(self, config=None, agents=None, env=None):
         super(KoreGymEnv, self).__init__()
 
@@ -377,7 +378,7 @@ class KoreGymEnv(gym.Env):
         return self.env.run(self.agents)
 
     @staticmethod
-    def raw_obs_as_gym_state(raw_obs) -> np.ndarray:
+    def raw_obs_as_gym_state(raw_obs, config) -> np.ndarray:
         """Return the current observation encoded as a state in state space.
 
         Define a 6x21x21+3+4 state (n_features x size x size x, 3 extra features and 4 controlled shipyard features).
@@ -396,8 +397,6 @@ class KoreGymEnv(gym.Env):
             raw_obs: raw observation of kore environment 
 
         """
-        config = make("kore_fleets").configuration
-
         # Init output state
         gym_state = np.zeros(shape=(N_FEATURES, config.size, config.size))
 
@@ -569,14 +568,15 @@ class KoreGymEnv(gym.Env):
         my_kore = clip_normalize(player.kore, low_in=0, high_in=MAX_KORE_IN_RESERVE)
         opponent_kore = clip_normalize(opponent.kore, low_in=0, high_in=MAX_KORE_IN_RESERVE)
         states = []
-        for shipyard_info in controlled_shipyard_info:
-            states.append([gym_state, np.array([progress, my_kore, opponent_kore]), shipyard_info]) 
+        if controlled_shipyard_info is not None: 
+            for shipyard_info in controlled_shipyard_info:
+                states.append([gym_state, np.array([progress, my_kore, opponent_kore]), shipyard_info]) 
             
         return states
 
     @staticmethod
     def env_action_as_gym_action(action):
-        direction_list = {'N' : 0, 'E' : 1, 'S' : 2, 'W' : 3, 'C' : -1}
+        direction_list = {'N' : 0, 'E' : 1, 'S' : 2, 'W' : 3, 'C' : 4}
         ppo_action = []
         act = action.split('_')
 

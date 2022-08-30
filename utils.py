@@ -1,4 +1,5 @@
 import torch
+import torch.nn.functional as F
 import matplotlib.pyplot as plt
 
 def build_loss_func(cfg, args):
@@ -9,10 +10,12 @@ def build_loss_func(cfg, args):
     """
     mode = args.mode
     if mode == 'sl':
-
-        pass
+        return my_loss
     elif mode == 'rl':
         pass
+
+def sl_loss(output, target):
+    
 
 def build_optim(cfg, args, model):
     """train model by supervised learning
@@ -49,7 +52,15 @@ def build_optim(cfg, args, model):
     
     # TODO : add optimizer
 
-
+def set_scheduler(optim, scheduler_dict):
+    scheduler, spec = list(scheduler_dict.items())[0]
+    scheduler = scheduler.lower()
+    
+    if scheduler == 'multistep':
+        return torch.optim.lr_scheduler.MultiStepLR(optim, milestones=spec["milestones"], gamma=spec["gamma"])
+    elif scheduler == 'cyclic':
+        return torch.optim.lr_scheduler.CyclicLR(optim, base_lr=spec["base_lr"], max_lr=spec["max_lr"])
+    
 def build_scheduler(cfg, args, optim=None):
     """train model by supervised learning
 
@@ -65,15 +76,6 @@ def build_scheduler(cfg, args, optim=None):
         critic_scheduler_dict = cfg['train']['rl']['scheduler']['critic']
         return set_scheduler(optim[0], actor_scheduler_dict), set_scheduler(optim[1], critic_scheduler_dict)
 
-    def set_scheduler(optim, scheduler_dict):
-        scheduler, spec = scheduler_dict.items()
-        scheduler = scheduler.lower()
-        
-        if scheduler == 'multistep':
-            return torch.optim.lr_scheduler.MultiStepLR(optim, milestones=[spec["milestones"]], gamma=spec["gamma"])
-        elif scheduler == 'cyclic':
-            return torch.optim.lr_scheduler.CyclicLR(optim, base_lr=spec["base_lr"], max_lr=spec["max_lr"])
-    
     # TODO : add leraning rate scheduler
 
 def plot_progress(args, cfg, train_acc, train_loss, test_acc, test_loss):

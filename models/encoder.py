@@ -8,7 +8,7 @@ import numpy as np
 # CNN Encoder which get fleet info, shipyard info, and cell kore as input
 class CellFeatureEncoder(nn.Module):
   def __init__(self, cfg):
-    super(CellFeatureEncoder, self).__init__()
+    super().__init__()
     
     self.height = cfg['cell_size']
     self.width = cfg['cell_size']

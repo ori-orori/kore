@@ -7,9 +7,9 @@ train:
     scheduler: {'multistep': {"milestones": [30, 80], "gamma": 0.1}}
     dataset:
       data_path: './data/'
-      train_val_ratio: 0.8
+      train_ratio: 0.8
       num_workers: 2
-      batch_size: 64
+      batch_size: 1
   rl:
     episodes: 10000
     save_path: './pretrained/reinforcement_learning'
@@ -31,3 +31,9 @@ train:
   
 model:
   config_path: './config/model_config.yaml'
+
+agents:
+  main_agent : beta_1st
+  opponent : [beta_1st, beta_6th, base]
+  # samples_num : [1000, 500, 100]
+  samples_num : [10, 10, 10]

@@ -1,0 +1,4 @@
+agents:
+  main_agent : beta_1st
+  opponent : [beta_1st, beta_6th, base]
+  samples_num : [1000, 500, 100]
