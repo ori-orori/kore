@@ -26,8 +26,8 @@ train:
       timesteps_per_batch: 4000
       max_timesteps_per_episode: 400
       n_updates_per_iteration: 5
-  
-
 
   device: 'cpu'
   
+model:
+  config_path: './config/model_config.yaml'
