@@ -1,4 +1,5 @@
 import torch
+import matplotlib.pyplot as plt
 
 def build_loss_func(cfg, args):
     """build loss function depends on train type
@@ -8,6 +9,7 @@ def build_loss_func(cfg, args):
     """
     mode = args.mode
     if mode == 'sl':
+
         pass
     elif mode == 'rl':
         pass   
@@ -77,17 +79,85 @@ def build_scheduler(cfg, args, optim=None):
     
     # TODO : add leraning rate scheduler
 
-def plot_progress():
+def plot_progress(args, cfg, train_acc, train_loss, test_acc, test_loss):
     """
-    
-    """
-    pass
+    train accuracy
+    train loss
+    test accuracy
+    test loss
 
-def log_progress():
+    train winrate
+    train loss
+    validation winrate
+    validation loss
+    moving average = 100
+    """
+    f, axes = plt.subplots(1, 2)
+    plt.subplots_adjust(wspace=0.3, hspace=0.3)
+    f.set_size_inches((20, 15))
+
+    if args.mode == 'sl':
+        axes[0].plot(range(len(train_acc)), train_acc, color='blue', label='train')
+        axes[0].plot(range(len(test_acc)), test_acc, color='orange', label='test')
+        axes[0].set_xlabel('epoch', fontsize=11)
+        axes[0].set_ylabel('accuracy', fontsize=11)
+        axes[0].legend()
+        axes[0].title('Model Accuracy', fontsize=11)
+
+        axes[1].plot(range(len(train_loss)), train_loss, color='blue', label='train')
+        axes[1].plot(range(len(test_loss)), test_loss, color='orange', label='test')
+        axes[1].set_xlabel('epoch', fontsize=11)
+        axes[1].set_ylabel('loss', fontsize=11)
+        axes[1].legend()
+        axes[1].title('Model Loss', fontsize=11)
+
+    if args.mode == 'rl':
+        win_rate = []
+        moving_avg = cfg['parameters']['MOVING_AVERAGE']
+        win_rate_avg = 0
+        for episode in range(moving_avg):
+            win_rate_avg += train_acc[episode]
+        win_rate.append(win_rate_avg)
+
+        for episode in range(moving_avg, len(train_acc)):
+            win_rate_avg = win_rate_avg + train_acc[episode] - train_acc[episode - moving_avg]
+            win_rate.append(win_rate_avg)
+
+        axes[0].plot(range(len(win_rate)), win_rate, color='blue', label='train')
+        axes[0].plot(range(len(test_acc)), test_acc, color='orange', label='validation')
+        axes[0].set_xlabel('episode', fontsize=11)
+        axes[0].set_ylabel('win rate', fontsize=11)
+        axes[0].legend()
+        axes[0].title('Model WinRate', fontsize=11)
+
+        axes[1].plot(range(len(train_loss)), train_loss, color='blue', label='train')
+        axes[1].plot(range(len(test_loss)), test_loss, color='orange', label='validation')
+        axes[1].set_xlabel('episode', fontsize=11)
+        axes[1].set_ylabel('loss', fontsize=11)
+        axes[1].legend()
+        axes[1].title('Model Loss', fontsize=11)
+
+    plt.show()
+
+
+def log_progress(args, epoch, acc, loss, md=None):
     """
 
+
     """
-    pass
+    if args.mode == 'sl':
+        if md == 'train':
+            print(f'----- SL train, epoch{epoch + 1} -----')
+            print(f'train_loss: {loss:.6f}, train_accuracy: {acc:.6f}')
+        if md == 'val':
+            print(f'----- SL val, epoch{epoch + 1} -----')
+            print(f'validation_loss: {loss:.6f}, validation_accuracy: {acc:.6f}')
+        print(' ')
+
+    if args.mode == 'rl':
+        print(f'----- RL train, epoch{epoch + 1} -----')
+        print(f'train_loss: {loss:.6f}, train_accuracy: {acc:.6f}')
+        pass
 
 def pfsp_function(beat_count, all_count, p=1, init_factor=50):
     """Calculate agent play priority value
