@@ -8,7 +8,7 @@ import numpy as np
 from kaggle_environments import make
 from kaggle_environments.envs.kore_fleets.helpers import ShipyardAction, Board, Direction
 
-env_config_path = './config/model_config.yaml'
+env_config_path = './config/env_config.yaml'
 with open(env_config_path, 'r') as f:
     cfg = yaml.safe_load(f)
 
