@@ -8,7 +8,7 @@ import numpy as np
 from kaggle_environments import make
 from kaggle_environments.envs.kore_fleets.helpers import ShipyardAction, Board, Direction
 
-env_config_path = './config/env_config.yaml'
+env_config_path = '../config/env_config.yaml'
 with open(env_config_path, 'r') as f:
     cfg = yaml.safe_load(f)
 
@@ -581,7 +581,7 @@ class KoreGymEnv(gym.Env):
         act = action.split('_')
 
         if act[0]=='SPAWN':
-            ppo_action = [-1 * int(act[1])]
+            ppo_action = [2, int(act[1])]
 
         elif act[0] == 'LAUNCH':
             dir_step = []
@@ -591,9 +591,9 @@ class KoreGymEnv(gym.Env):
                     if i==len(plan)-1 or plan[i+1] in direction_list:
                         dir_step.extend([direction_list[plan[i]], 0])
                     else:
-                        dir_step.extend([direction_list[plan[i]], int(plan[i+1])])
+                        dir_step.extend([direction_list[plan[i]], int(plan[i+1])/9])
 
-            ppo_action = [int(act[1])]
+            ppo_action = [1, int(act[1])]
             ppo_action.extend(dir_step)
         else:
             ppo_action = [0]
