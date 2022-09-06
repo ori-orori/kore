@@ -10,12 +10,49 @@ def build_loss_func(cfg, args):
     """
     mode = args.mode
     if mode == 'sl':
-        return my_loss
+        return sl_loss
     elif mode == 'rl':
-        pass
+        return rl_loss
 
 def sl_loss(output, target):
-    
+    """
+    output = [action1_1_output, action1_2_mean, action2_1_output, action2_2_mean]
+    """
+    action1_1_output = output[0]
+    action1_2_mean = output[1]
+    action2_1_output = output[2]
+    action2_2_mean = output[3]
+
+    action2_1_loss = []
+    action2_2_loss = []
+    total_loss = 0
+
+    direction_one_hot = torch.eye(6)
+    for i, plan in enumerate(target[2:]):
+        if i+1==len(target[2:]):
+            action2_1_loss.append(\
+                F.cross_entropy(action2_1_output[i//2], direction_one_hot[5]))
+        elif i%2 == 0:
+            action2_1_loss.append(\
+            F.cross_entropy(action2_1_output[i//2], direction_one_hot[plan]))
+        else:
+            action2_2_loss.append(F.mse_loss(action2_2_mean[i//2]), plan)
+
+
+    action1_1_loss = F.cross_entropy(action1_1_output, torch.eye(3)[target[0]])
+    action1_2_loss = F.mse_loss(action1_2_mean, target[1])
+
+    for k in action2_1_loss:
+        total_loss += k
+    for k in action2_2_loss:
+        total_loss += k
+    total_loss = total_loss + action1_1_loss + action1_2_loss
+
+    return total_loss
+
+def rl_loss(output, target):
+    pass
+
 
 def build_optim(cfg, args, model):
     """train model by supervised learning
