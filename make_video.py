@@ -72,5 +72,5 @@ def img2mp4(paths, pathOut, fps) :
 paths = sorted(os.listdir(path_src))
 paths = [os.path.join(path_src, path) for path in paths]
 
-filename = 'file://' + os.getcwd() + '/' + 'render_file.html'
+filename = 'file://' + os.getcwd() + '/' + 'play_result.html'
 img2mp4(paths, pathOut, fps=3)
