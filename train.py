@@ -97,17 +97,18 @@ def sl_train(cfg, args):
             # TODO : get state and action from dataloader
             # state, action = ....
             optim.zero_grad()
-            a = time.time()
-            _, prediction = model(state)
-            print(time.time() - a)
-            a = time.time()
-            print('prediction:',prediction)
-            print('action:',action)
-            loss = loss_func(prediction, action)
+            # print('state:', state.shape)
+            print('action:', action.shape)
+            _, prediction, output = model(state, action)
+            print('prediction:', prediction)
+            print('output: ', output)
+            print('action:', action)
+
+            loss = loss_func(output, action)
             training_loss += loss.item()
             loss.backward()
             optim.step()
-            log_progress()
+            log_progress(args, epoch, loss.detach(), md='train')
         history["T_loss"].append(training_loss/len(train_dataloader))
 
         model.eval()

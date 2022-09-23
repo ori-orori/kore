@@ -49,5 +49,5 @@ class KoreDataset(Dataset):
                         if shipyard in action:
                             self.actions.append(torch.tensor(KoreGymEnv.env_action_as_gym_action(action[shipyard])).to(torch.float32))
                         else:
-                            self.actions.append(torch.tensor([0], dtype=torch.float32))
+                            self.actions.append(torch.tensor([0]*12, dtype=torch.float32))
         return (self.map_info[i], self.scalar_info[i], self.self_info[i]), self.actions[i]

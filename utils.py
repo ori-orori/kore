@@ -17,11 +17,12 @@ def build_loss_func(cfg, args):
 def sl_loss(output, target):
     """
     output = [action1_1_output, action1_2_mean, action2_1_output, action2_2_mean]
+    target : [B, 12]
     """
-    action1_1_output = output[0]
-    action1_2_mean = output[1]
-    action2_1_output = output[2]
-    action2_2_mean = output[3]
+    action1_1_output = output[0] # B, 3
+    action1_2_mean = output[1] # B, 1
+    action2_1_output = output[2] # B, 5, 6
+    action2_2_mean = output[3] # B, 5, 1
 
     action2_1_loss = []
     action2_2_loss = []
@@ -39,8 +40,9 @@ def sl_loss(output, target):
             action2_2_loss.append(F.mse_loss(action2_2_mean[i//2]), plan)
 
 
-    action1_1_loss = F.cross_entropy(action1_1_output, torch.eye(3)[target[0]])
-    action1_2_loss = F.mse_loss(action1_2_mean, target[1])
+    action1_1_loss = F.cross_entropy(action1_1_output, target[:, 0].type(torch.long))
+    
+    action1_2_loss = F.mse_loss(action1_2_mean, target[:, 1].unsqueeze(dim=1))
 
     for k in action2_1_loss:
         total_loss += k
@@ -176,23 +178,23 @@ def plot_progress(args, cfg, train_acc, train_loss, test_acc, test_loss):
     plt.show()
 
 
-def log_progress(args, epoch, acc, loss, md=None):
+def log_progress(args, epoch, loss, md=None, acc=1.0):
     """
 
 
     """
     if args.mode == 'sl':
         if md == 'train':
-            print(f'----- SL train, epoch{epoch + 1} -----')
+            print(f'----- SL train, epoch{epoch} -----')
             print(f'train_loss: {loss:.6f}, train_accuracy: {acc:.6f}')
         if md == 'val':
-            print(f'----- SL val, epoch{epoch + 1} -----')
+            print(f'----- SL val, epoch{epoch} -----')
             print(f'validation_loss: {loss:.6f}, validation_accuracy: {acc:.6f}')
         print(' ')
 
     if args.mode == 'rl':
-        print(f'----- RL train, epoch{epoch + 1} -----')
-        print(f'train_loss: {loss:.6f}, train_accuracy: {acc:.6f}')
+        print(f'----- RL train, epoch{epoch} -----')
+        # print(f'train_loss: {loss:.6f}, train_accuracy: {acc:.6f}')
         pass
 
 def pfsp_function(beat_count, all_count, p=1, init_factor=50):

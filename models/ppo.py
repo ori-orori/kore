@@ -1,5 +1,4 @@
 import numpy as np
-import time
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -86,13 +85,14 @@ class Actor(nn.Module):
         rnn_input, action2_hidden = self.create_input_action(batch_state, batch_action, action1)
 
         if batch_action is None: # reinforcement learning 
-            action2, action2_1, action2_2 = None, [None], [None]
+            action2 = None
             action_len = 2
-            while (action2_1[0] != 5) and (action_len < self.max_action_len):
+            while action_len < self.max_action_len:
                 action2_output, action2_hidden = self.actor2(rnn_input, action2_hidden)
                 action2_output = action2_output.squeeze(0)
                 if action_len % 2 == 0: # direction
                     action2_1_output = self.actor2_1(action2_output)
+                    
                     action2_1_prob = F.softmax(action2_1_output, dim=1)
                     action2_1_dist = Categorical(action2_1_prob)
                     action2_1 = action2_1_dist.sample().to(torch.float).unsqueeze(0)
@@ -102,9 +102,13 @@ class Actor(nn.Module):
                         action2 = action2_1
                     else:
                         action2 = torch.cat((action2, action2_1), dim=1)
+
+                    if action2_1.detach().item() == 5:
+                        break
                     
                 else: # step
                     action2_2_mean = self.actor2_2(action2_output)
+                    
                     std = torch.full(size=(self.batch_size, 1), fill_value=0.1)
                     action2_2_dist = Normal(action2_2_mean, std)
                     action2_2 = action2_2_dist.sample()
@@ -113,23 +117,24 @@ class Actor(nn.Module):
                     action2 = torch.cat((action2, action2_2), dim=1)
                 action_len += 1
         else: # supervised learning and evaluation
-            action2_output, action2_hidden = self.actor2(rnn_input, action2_hidden)
+            action2_output, action2_hidden = self.actor2(rnn_input, action2_hidden) # [1, 10, 16], [2, 1, 16]
             action2_1_index = torch.arange(0, self.max_action_len-2, 2)
-            action2_1_output = action2_output[:, action2_1_index]
-            action2_1_prob = F.softmax(self.actor2_1(action2_1_output), dim=1)
-            action2_1_dist = Categorical(action1_1_prob)
+            action2_1_output = self.actor2_1(action2_output[:, action2_1_index]) # 1, 5, 6
+            action_output.append(action2_1_output)
+            action2_1_prob = F.softmax(action2_1_output, dim=2)
+            action2_1_dist = Categorical(action2_1_prob)
             if not evaluate: # supervised learning
                 action2_1 = action2_1_dist.sample().to(torch.float)
                 action2_1_logprob = action2_1_dist.log_prob(action2_1)
             else: # evaluation
                 action2_1 = batch_action[:, action2_1_index]
                 action2_1_logprob = action2_1_dist.log_prob(action2_1)
-            action_logprob += action2_1_logprob
+            # action_logprob += action2_1_logprob
 
             action2_2_index = torch.arange(1, self.max_action_len-2, 2)
-            action2_2_output = action2_output[:, action2_2_index]
-            action2_2_mean = self.actor2_2(action2_2_output)
-            std = torch.full(size=(self.batch_size, (self.max_action_len)//2), fill_value=0.1)
+            action2_2_mean = self.actor2_2(action2_output[:, action2_2_index])
+            action_output.append(action2_2_mean)
+            std = torch.full(size=(self.batch_size, 1), fill_value=0.1)
             action2_2_dist = Normal(action2_2_mean, std)
             if not evaluate: # supervised learning
                 action2_2 = action2_2_dist.sample()
@@ -137,11 +142,11 @@ class Actor(nn.Module):
             else: # evaluation
                 action2_2 = batch_action[:, action2_2_index]
                 action2_2_logprob = action2_2_dist.log_prob(action2_2)
-            action_logprob += action2_2_logprob
+            # action_logprob += action2_2_logprob
 
             action2 = torch.zeros((self.batch_size, self.max_action_len-2))
             action2[:, action2_1_index] = action2_1
-            action2[:, action2_2_index] = action2_2
+            action2[:, action2_2_index] = action2_2.squeeze(dim=2)
 
         action = torch.cat((action1, action2), dim=1)
         return action, action_logprob, action_output
@@ -187,13 +192,15 @@ class PPO(nn.Module):
         self.actor = Actor(cfg)
         self.critic = Critic(cfg)
 
-    def forward(self, state):
+    def forward(self, state, batch_action=None):
         encoded_state = self.encoder(state)
         value = self.critic(encoded_state)
-        action, action_logprob, action = self.actor(encoded_state)
+        if  batch_action is None:
+            action, action_logprob, action_output = self.actor(encoded_state)
+        else:
+            action, action_logprob, action_output = self.actor(encoded_state, batch_action)
         
-
-        return value, action
+        return value, action, action_output
         
 
     def get_action(self, state):

@@ -581,7 +581,7 @@ class KoreGymEnv(gym.Env):
         act = action.split('_')
 
         if act[0]=='SPAWN':
-            ppo_action = [2, int(act[1])]
+            ppo_action = [1, int(act[1])] + [0]*10
 
         elif act[0] == 'LAUNCH':
             dir_step = []
@@ -595,8 +595,9 @@ class KoreGymEnv(gym.Env):
 
             ppo_action = [1, int(act[1])]
             ppo_action.extend(dir_step)
+            ppo_action += [0] * (12 - len(ppo_action))
         else:
-            ppo_action = [0]
+            ppo_action = [0] * 12
         
         return np.array(ppo_action)
 
