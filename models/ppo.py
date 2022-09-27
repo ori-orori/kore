@@ -158,11 +158,11 @@ class Actor(nn.Module):
             rnn_input = F.one_hot(torch.full((self.batch_size, 1), self.rnn_input_dim-1), num_classes=self.rnn_input_dim).to(torch.float)
         else:
             init_hidden1 = self.encoder((torch.cat((batch_state, batch_action[:,:2]), dim=1)).unsqueeze(0))
-            rnn_input = torch.zeros(self.batch_size, self.max_action_len-2, self.rnn_input_dim)
+            rnn_input = torch.zeros(self.batch_size, self.max_action_len-1, self.rnn_input_dim)
             for i, action in enumerate(batch_action):
                 if action[0] > 0: # action type is launch fleet
                     rnn_input[i][0][5] = 1.0
-                    for j, char in enumerate(action[1:]):
+                    for j, char in enumerate(action[2:]):
                         if j % 2 == 0: # direction
                             rnn_input[i][j+1][int(char)] = 1.0
                         else: # step

@@ -98,11 +98,11 @@ def sl_train(cfg, args):
             # state, action = ....
             optim.zero_grad()
             # print('state:', state.shape)
-            print('action:', action.shape)
+            # print('action:', action.shape)
             _, prediction, output = model(state, action)
-            print('prediction:', prediction)
-            print('output: ', output)
-            print('action:', action)
+            # print('prediction:', prediction)
+            # print('output: ', output)
+            # print('action:', action)
 
             loss = loss_func(output, action)
             training_loss += loss.item()

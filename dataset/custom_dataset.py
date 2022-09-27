@@ -35,7 +35,7 @@ class KoreDataset(Dataset):
         for json_file in self.files:
             with open(json_file, 'r') as f:
                 json_data = json.load(f)
-            for step in range(1): # len(json_data['steps'])
+            for step in range(5): # len(json_data['steps'])
                 observation = json_data['steps'][step][0]['observation']
                 action = json_data['steps'][step][0]['action']             
                 states_per_step = KoreGymEnv.raw_obs_as_gym_state(observation, self.config)
